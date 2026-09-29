@@ -46,6 +46,8 @@ export interface PaymentView {
   createdAt: string;
   expiresAt: string | null;
   paidAt: string | null;
+  invoiceUrl: string | null;
+  paymentChannel: string | null;
 }
 
 /** Checkout as sent to the browser: no email, phone or street address. */

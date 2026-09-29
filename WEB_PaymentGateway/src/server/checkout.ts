@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { isValidObjectId } from "mongoose";
-import { isPaymentMethod, type PaymentMethod } from "@/lib/payment-methods";
+import { isPaymentMethod, xenditChannelsFor, type PaymentMethod } from "@/lib/payment-methods";
 import { calcTotals, TAX_RATE } from "@/lib/pricing";
 import type { CheckoutStatus, PaymentStatus } from "@/lib/status";
 import type { CheckoutView, OrderListItem, PaymentView } from "@/lib/types";
@@ -11,6 +11,7 @@ import { AppError } from "@/server/errors";
 import { CheckoutModel, type CheckoutRecord } from "@/server/models/Checkout";
 import { PaymentModel, type PaymentRecord } from "@/server/models/Payment";
 import { ProductModel } from "@/server/models/Product";
+import { createInvoice, XenditApiError, XenditConfigError } from "@/server/xendit";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -107,6 +108,8 @@ function toPaymentView(p: WithId<PaymentRecord>): PaymentView {
     createdAt: p.createdAt.toISOString(),
     expiresAt: p.expiresAt ? p.expiresAt.toISOString() : null,
     paidAt: p.paidAt ? p.paidAt.toISOString() : null,
+    invoiceUrl: p.invoiceUrl ?? null,
+    paymentChannel: p.paymentChannel ?? null,
   };
 }
 
@@ -162,9 +165,14 @@ export interface StartPaymentInput {
   checkoutId: unknown;
   shipping: unknown;
   method: unknown;
+  /** Public origin used for Xendit's success/failure redirects. */
+  baseUrl: string;
 }
 
-/** Saves shipping + method on the checkout and opens a PENDING payment (the bill) for its total. */
+/**
+ * Saves shipping + method on the checkout, records a PENDING payment and issues a Xendit invoice for it.
+ * The shopper is then sent to the invoice page; the Xendit webhook marks the payment as paid.
+ */
 export async function startPayment(input: StartPaymentInput) {
   if (typeof input.checkoutId !== "string" || !isValidObjectId(input.checkoutId)) {
     throw new AppError("Checkout not found.", 404);
@@ -185,29 +193,66 @@ export async function startPayment(input: StartPaymentInput) {
     throw new AppError("This order has already been paid.", 409, { redirectUrl: `/orders/${checkout.id}` });
   }
 
-  checkout.set({ shipping: { ...shipping, phone: normalizePhone(shipping.phone) }, paymentMethod: method });
+  const customer = { ...shipping, phone: normalizePhone(shipping.phone) };
+  checkout.set({ shipping: customer, paymentMethod: method });
 
-  // A double-click or a return from the payment page should reuse the open bill, not create a second one.
+  // A double-click or a return from Xendit should reuse the open invoice, not create a second one.
   let payment = await PaymentModel.findOne({
     checkout: checkout._id,
     status: "PENDING",
     method,
     amount: checkout.total,
+    invoiceUrl: { $ne: null },
     expiresAt: { $gt: new Date() },
   }).sort({ createdAt: -1 });
 
-  payment ??= await PaymentModel.create({
-    checkout: checkout._id,
-    externalId: `${checkout.code}-${Date.now().toString(36).toUpperCase()}`,
-    method,
-    amount: checkout.total,
-    expiresAt: new Date(Date.now() + PAYMENT_WINDOW_MS),
-  });
+  if (!payment) {
+    // Record the payment before calling Xendit so the webhook can always find it by external_id.
+    payment = await PaymentModel.create({
+      checkout: checkout._id,
+      externalId: `${checkout.code}-${Date.now().toString(36).toUpperCase()}`,
+      method,
+      amount: checkout.total,
+      expiresAt: new Date(Date.now() + PAYMENT_WINDOW_MS),
+    });
+
+    try {
+      const orderUrl = `${input.baseUrl}/orders/${checkout.id}`;
+      const invoice = await createInvoice({
+        externalId: payment.externalId,
+        amount: checkout.total,
+        description: `Goresan order ${checkout.code}`,
+        customer,
+        items: checkout.items.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, category: "Artwork" })),
+        fees: [
+          { type: "PPN 11%", value: checkout.tax },
+          { type: "Shipping", value: checkout.shippingFee },
+        ].filter((fee) => fee.value > 0),
+        paymentMethods: xenditChannelsFor(method),
+        successRedirectUrl: `${orderUrl}?paid=1`,
+        failureRedirectUrl: orderUrl,
+        durationSeconds: PAYMENT_WINDOW_MS / 1000,
+        metadata: { checkoutId: checkout.id, orderCode: checkout.code },
+      });
+      payment.set({ invoiceId: invoice.id, invoiceUrl: invoice.invoice_url, expiresAt: new Date(invoice.expiry_date) });
+      await payment.save();
+    } catch (err) {
+      payment.set({ status: "FAILED", failureReason: err instanceof Error ? err.message : String(err) });
+      await payment.save();
+      if (err instanceof XenditConfigError) {
+        throw new AppError("The payment gateway isn't configured yet (XENDIT_SECRET_KEY is missing).", 503);
+      }
+      if (err instanceof XenditApiError) {
+        throw new AppError(`Xendit couldn't create the invoice: ${err.message}`, 502);
+      }
+      throw err;
+    }
+  }
 
   checkout.set({ payment: payment._id, status: "PENDING_PAYMENT" });
   await checkout.save();
 
-  return { checkout, payment, redirectUrl: `/orders/${checkout.id}` };
+  return { checkout, payment, redirectUrl: payment.invoiceUrl as string };
 }
 
 export async function listOrders(limit = 30): Promise<OrderListItem[]> {

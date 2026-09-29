@@ -119,8 +119,9 @@ export default function PaymentPage({ checkout }: PaymentPageProps) {
               disabled={submitting}
               className="mt-5 inline-flex h-12 w-full items-center justify-center rounded-xl bg-ink text-sm font-semibold text-white transition hover:bg-ink/85 disabled:cursor-wait disabled:opacity-60"
             >
-              {submitting ? "Creating your bill…" : "Confirm & Pay"}
+              {submitting ? "Opening Xendit…" : "Confirm & Pay"}
             </button>
+            <p className="mt-3 text-center text-xs text-muted">You&apos;ll finish paying on Xendit&apos;s secure page.</p>
             {formError && (
               <p role="alert" className="mt-3 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
                 {formError}

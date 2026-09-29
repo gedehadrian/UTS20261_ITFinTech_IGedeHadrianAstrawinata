@@ -13,6 +13,14 @@ const PaymentSchema = new Schema(
     status: { type: String, enum: PAYMENT_STATUSES, default: "PENDING", index: true },
     expiresAt: { type: Date, default: null },
     paidAt: { type: Date, default: null },
+    // Filled from the Xendit invoice once it is created
+    invoiceId: { type: String, default: null, index: true },
+    invoiceUrl: { type: String, default: null },
+    // Filled from the Xendit webhook once the shopper pays
+    paidAmount: { type: Number, default: null },
+    paymentChannel: { type: String, default: null },
+    gatewayMethod: { type: String, default: null },
+    failureReason: { type: String, default: null },
   },
   { timestamps: true },
 );
