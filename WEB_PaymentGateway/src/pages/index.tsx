@@ -1,28 +1,33 @@
-import type { GetStaticProps } from "next";
+import type { GetServerSideProps } from "next";
 import Head from "next/head";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import CategoryTabs from "@/components/CategoryTabs";
 import { ArrowRightIcon, SearchIcon } from "@/components/Icons";
 import ProductCard from "@/components/ProductCard";
+import SetupNotice from "@/components/SetupNotice";
 import SiteHeader from "@/components/SiteHeader";
-import catalog from "@/data/products.json";
 import { CATEGORY_VALUES, type Category } from "@/lib/categories";
 import { useCart } from "@/lib/cart";
 import { formatIDR } from "@/lib/format";
 import type { Product } from "@/lib/types";
+import { listProducts } from "@/server/catalog";
 
 interface SelectItemsProps {
   products: Product[];
+  setupError: string | null;
 }
 
-export const getStaticProps: GetStaticProps<SelectItemsProps> = async () => ({
-  props: {
-    products: (catalog as Omit<Product, "id">[]).map((p) => ({ ...p, id: p.slug })),
-  },
-});
+export const getServerSideProps: GetServerSideProps<SelectItemsProps> = async () => {
+  try {
+    return { props: { products: await listProducts(), setupError: null } };
+  } catch (err) {
+    console.error(err);
+    return { props: { products: [], setupError: err instanceof Error ? err.message : "Unknown database error." } };
+  }
+};
 
-export default function SelectItemsPage({ products }: SelectItemsProps) {
+export default function SelectItemsPage({ products, setupError }: SelectItemsProps) {
   const [category, setCategory] = useState<Category | "all">("all");
   const [query, setQuery] = useState("");
   const cart = useCart();
@@ -71,7 +76,9 @@ export default function SelectItemsPage({ products }: SelectItemsProps) {
           <CategoryTabs value={category} counts={counts} onChange={setCategory} />
         </div>
 
-        {visible.length === 0 ? (
+        {setupError ? (
+          <SetupNotice message={setupError} />
+        ) : visible.length === 0 ? (
           <div className="py-20 text-center">
             <p className="font-display text-xl">Nothing here matches “{query}”.</p>
             <button

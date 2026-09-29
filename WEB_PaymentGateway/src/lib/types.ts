@@ -1,4 +1,6 @@
 import type { Category } from "@/lib/categories";
+import type { PaymentMethod } from "@/lib/payment-methods";
+import type { CheckoutStatus, PaymentStatus } from "@/lib/status";
 
 export interface Product {
   id: string;
@@ -23,4 +25,51 @@ export interface CartItem {
   price: number;
   stock: number;
   quantity: number;
+}
+
+export interface CheckoutItemView {
+  slug: string;
+  name: string;
+  artist: string;
+  image: string;
+  price: number;
+  quantity: number;
+  lineTotal: number;
+}
+
+export interface PaymentView {
+  id: string;
+  externalId: string;
+  method: PaymentMethod;
+  amount: number;
+  status: PaymentStatus;
+  createdAt: string;
+  expiresAt: string | null;
+  paidAt: string | null;
+}
+
+/** Checkout as sent to the browser: no email, phone or street address. */
+export interface CheckoutView {
+  id: string;
+  code: string;
+  status: CheckoutStatus;
+  items: CheckoutItemView[];
+  subtotal: number;
+  tax: number;
+  shippingFee: number;
+  total: number;
+  paymentMethod: PaymentMethod | null;
+  recipient: { fullName: string; city: string } | null;
+  payment: PaymentView | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+export interface OrderListItem {
+  id: string;
+  code: string;
+  status: CheckoutStatus;
+  itemCount: number;
+  total: number;
+  createdAt: string;
 }

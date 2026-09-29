@@ -14,7 +14,7 @@ Ujian Tengah Semester **IT Financial Services**, Semester Ganjil 2026/1, Univers
 |---|---|---|
 | 1 | Repository GitHub + kolaborator dosen | ✅ |
 | 2 | Project Next.js `WEB_PaymentGateway` (Page Router), 3 halaman: Select Item, Checkout, Payment | ✅ |
-| 3 | Database MongoDB: Product, Checkout, Payment, dll. | ⏳ |
+| 3 | Database MongoDB: Product, Checkout, Payment, dll. | ✅ |
 | 4 | Payment gateway Xendit + webhook, status otomatis LUNAS | ⏳ |
 | 5 | Video demo (maks. 3 menit) | ⏳ |
 

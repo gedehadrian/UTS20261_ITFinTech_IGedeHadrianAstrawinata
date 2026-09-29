@@ -2,6 +2,7 @@ import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { useState } from "react";
 import { ArrowRightIcon, TrashIcon } from "@/components/Icons";
 import PageHeader from "@/components/PageHeader";
 import QuantityStepper from "@/components/QuantityStepper";
@@ -14,6 +15,26 @@ export default function CheckoutPage() {
   const router = useRouter();
   const cart = useCart();
   const totals = calcTotals(cart.subtotal);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function continueToPayment() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/checkouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: cart.items.map((i) => ({ slug: i.slug, quantity: i.quantity })) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not create the checkout.");
+      await router.push(`/payment/${data.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create the checkout.");
+      setSubmitting(false);
+    }
+  }
 
   return (
     <>
@@ -84,11 +105,18 @@ export default function CheckoutPage() {
               <p className="mt-2 text-xs text-muted">Shipping is added on the next step.</p>
               <button
                 type="button"
-                onClick={() => router.push("/payment")}
-                className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ink text-sm font-semibold text-white transition hover:bg-ink/85"
+                onClick={continueToPayment}
+                disabled={submitting}
+                className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ink text-sm font-semibold text-white transition hover:bg-ink/85 disabled:cursor-wait disabled:opacity-60"
               >
-                Continue to Payment <ArrowRightIcon width={18} height={18} />
+                {submitting ? "Preparing your order…" : "Continue to Payment"}
+                {!submitting && <ArrowRightIcon width={18} height={18} />}
               </button>
+              {error && (
+                <p role="alert" className="mt-3 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
+                  {error}
+                </p>
+              )}
             </aside>
           </div>
         )}

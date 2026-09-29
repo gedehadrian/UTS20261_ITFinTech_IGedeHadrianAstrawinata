@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart";
 const NAV_LINKS = [
   { href: "/", label: "Shop" },
   { href: "/checkout", label: "Cart" },
+  { href: "/orders", label: "Orders" },
 ];
 
 export default function SiteHeader() {
