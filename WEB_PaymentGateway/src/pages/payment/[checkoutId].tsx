@@ -8,6 +8,7 @@ import PageHeader from "@/components/PageHeader";
 import PaymentMethodPicker from "@/components/PaymentMethodPicker";
 import ShippingForm from "@/components/ShippingForm";
 import { useCart } from "@/lib/cart";
+import { loadSavedShipping, rememberOrder, saveShipping, useHasSavedShipping } from "@/lib/device";
 import type { PaymentMethod } from "@/lib/payment-methods";
 import type { CheckoutView } from "@/lib/types";
 import { EMPTY_SHIPPING, validateShipping, type ShippingErrors } from "@/lib/validation";
@@ -34,6 +35,16 @@ export default function PaymentPage({ checkout }: PaymentPageProps) {
   const [method, setMethod] = useState<PaymentMethod>(checkout.paymentMethod ?? "CARD");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const hasSavedShipping = useHasSavedShipping();
+
+  function fillSavedShipping() {
+    const saved = loadSavedShipping();
+    if (saved) {
+      setShipping(saved);
+      setErrors({});
+      setFormError(null);
+    }
+  }
 
   const totals = {
     subtotal: checkout.subtotal,
@@ -68,6 +79,8 @@ export default function PaymentPage({ checkout }: PaymentPageProps) {
         }
         throw new Error(data.error ?? "Payment could not be started.");
       }
+      saveShipping(shipping);
+      rememberOrder({ id: checkout.id, code: checkout.code, createdAt: checkout.createdAt });
       cart.clear();
       if (String(data.redirectUrl).startsWith("/")) await router.push(data.redirectUrl);
       else window.location.assign(data.redirectUrl);
@@ -99,8 +112,22 @@ export default function PaymentPage({ checkout }: PaymentPageProps) {
         <form onSubmit={handleSubmit} noValidate className="lg:grid lg:grid-cols-[1fr_380px] lg:items-start lg:gap-10">
           <div className="space-y-8">
             <section>
-              <h2 className="mb-3 font-display text-xl">Shipping Address</h2>
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="font-display text-xl">Shipping Address</h2>
+                {hasSavedShipping && (
+                  <button
+                    type="button"
+                    onClick={fillSavedShipping}
+                    className="text-sm text-accent underline-offset-4 hover:underline"
+                  >
+                    Use my saved details
+                  </button>
+                )}
+              </div>
               <ShippingForm value={shipping} errors={errors} onChange={setShipping} />
+              <p className="mt-2 text-xs text-muted">
+                Your email is how we recognise you: use it with your order code to track this order later.
+              </p>
             </section>
             <section>
               <h2 className="mb-3 font-display text-xl">Payment Method</h2>

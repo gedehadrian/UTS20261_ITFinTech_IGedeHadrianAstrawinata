@@ -23,19 +23,28 @@ Select Item (/) → Checkout (/checkout) → Payment (/payment/[id]) → Invoice
 | `/` | Select Item | Cari produk, filter kategori (Drawing, Painting, Print, Craft, Bundle), tambah ke keranjang |
 | `/checkout` | Checkout | Ubah jumlah atau hapus item, subtotal, pajak PPN 11%, total |
 | `/payment/[checkoutId]` | Payment | Alamat pengiriman, metode pembayaran, ringkasan pesanan, Confirm & Pay |
-| `/orders/[id]` | Tagihan | Status pembayaran (Menunggu Pembayaran / LUNAS / Kedaluwarsa), tombol bayar |
-| `/orders` | Daftar pesanan | Pesanan terbaru beserta statusnya |
+| `/orders/[id]` | Tagihan | Status pembayaran (Menunggu Pembayaran / LUNAS / Kedaluwarsa), tombol bayar, ganti metode |
+| `/orders` | My orders | Pesanan dari browser ini, plus form **Track an order** (email + kode order) |
+
+## Identitas pembeli
+
+Toko memakai *guest checkout*: tidak ada password, dan **email adalah identitas pembeli**.
+
+- Saat pembayaran dimulai, data pembeli disimpan atau diperbarui di collection `customers` (satu dokumen per email), lalu checkout ditautkan ke customer tersebut.
+- Pesanan bisa dilacak dari perangkat mana pun dengan **email + kode order** (misalnya `GRS-260930-K7QM2`). Kode tanpa email yang cocok tidak akan menampilkan apa pun.
+- Browser pembeli mengingat pesanan yang pernah dibuat (halaman My orders) dan alamat terakhir (tombol "Use my saved details"). Data ini hanya disimpan di `localStorage` perangkat itu.
 
 ## Database (MongoDB)
 
 | Collection | Isi |
 |---|---|
 | `products` | Katalog: nama, kategori, seniman, medium, ukuran, harga, stok, gambar |
-| `checkouts` | Snapshot item dan harga, subtotal, pajak, ongkir, total, alamat, metode, status (`OPEN` → `PENDING_PAYMENT` → `PAID` / `EXPIRED`) |
+| `customers` | Pembeli per email: nama, telepon, alamat terakhir, waktu order terakhir |
+| `checkouts` | Snapshot item dan harga, subtotal, pajak, ongkir, total, pembeli, alamat, metode, status (`OPEN` → `PENDING_PAYMENT` → `PAID` / `EXPIRED`) |
 | `payments` | Tagihan per checkout: `externalId`, id dan URL invoice Xendit, jumlah, status (`PENDING` / `PAID` / `EXPIRED` / `FAILED`), channel pembayaran, waktu bayar |
 | `webhooklogs` | Setiap callback Xendit yang lolos verifikasi beserta hasil pemrosesannya |
 
-Relasi: `checkouts.items[].product` → `products`, `payments.checkout` → `checkouts`, `checkouts.payment` → tagihan terakhir di `payments`.
+Relasi: `checkouts.items[].product` → `products`, `checkouts.customer` → `customers`, `payments.checkout` → `checkouts`, `checkouts.payment` → tagihan terakhir di `payments`.
 
 Collection `products` terisi otomatis dari `src/data/products.json` saat database masih kosong. Untuk mereset harga dan stok jalankan `npm run seed`.
 
@@ -48,7 +57,8 @@ Collection `products` terisi otomatis dari `src/data/products.json` saat databas
 | GET | `/api/checkouts/:id` | Detail checkout dan tagihan terakhir |
 | POST | `/api/payments` | Simpan alamat dan metode, buat invoice Xendit `{ checkoutId, shipping, method }` |
 | POST | `/api/webhooks/xendit` | Callback invoice Xendit (`PAID` / `SETTLED` / `EXPIRED`) |
-| GET | `/api/orders` | Pesanan terbaru |
+| GET | `/api/orders?ids=` | Ringkasan status pesanan milik browser ini |
+| POST | `/api/orders/lookup` | Cari pesanan dengan `{ email, code }` |
 
 ## Environment variables
 

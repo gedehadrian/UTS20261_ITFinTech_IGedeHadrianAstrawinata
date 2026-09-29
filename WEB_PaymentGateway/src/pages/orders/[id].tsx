@@ -7,6 +7,7 @@ import { ArrowRightIcon, CheckIcon } from "@/components/Icons";
 import OrderSummary from "@/components/OrderSummary";
 import SiteHeader from "@/components/SiteHeader";
 import StatusBadge from "@/components/StatusBadge";
+import { rememberOrder } from "@/lib/device";
 import { formatDateTime, formatIDR } from "@/lib/format";
 import { PAYMENT_METHODS } from "@/lib/payment-methods";
 import type { CheckoutView } from "@/lib/types";
@@ -59,6 +60,11 @@ function OrderView({ initial }: { initial: CheckoutView }) {
   const methodLabel = PAYMENT_METHODS.find((m) => m.value === checkout.paymentMethod)?.label;
   const pending = checkout.status === "PENDING_PAYMENT";
   const returnedFromXendit = query.paid === "1";
+
+  // Opening a bill (e.g. straight back from Xendit) adds it to "My orders" on this device.
+  useEffect(() => {
+    rememberOrder({ id: checkout.id, code: checkout.code, createdAt: checkout.createdAt });
+  }, [checkout.id, checkout.code, checkout.createdAt]);
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-16 pt-8">
@@ -145,6 +151,12 @@ function OrderView({ initial }: { initial: CheckoutView }) {
           <dt className="text-muted">Ordered</dt>
           <dd>{formatDateTime(checkout.createdAt)}</dd>
         </dl>
+
+        <p className="mx-auto mt-6 max-w-md rounded-lg bg-paper px-4 py-3 text-xs leading-relaxed text-muted">
+          Keep your order code <span className="font-mono font-medium text-ink">{checkout.code}</span>. You can track this
+          order any time from <Link href="/orders" className="text-ink underline underline-offset-2">My orders</Link> with
+          the email you used at checkout.
+        </p>
       </section>
 
       <section className="mt-6 rounded-2xl border border-line bg-white p-5">

@@ -42,6 +42,7 @@ const CheckoutSchema = new Schema(
     shippingFee: { type: Number, required: true, min: 0 },
     total: { type: Number, required: true, min: 0 },
     status: { type: String, enum: CHECKOUT_STATUSES, default: "OPEN", index: true },
+    customer: { type: Schema.Types.ObjectId, ref: "Customer", default: null, index: true },
     shipping: { type: ShippingSchema, default: null },
     paymentMethod: { type: String, enum: PAYMENT_METHODS.map((m) => m.value), default: null },
     payment: { type: Schema.Types.ObjectId, ref: "Payment", default: null },

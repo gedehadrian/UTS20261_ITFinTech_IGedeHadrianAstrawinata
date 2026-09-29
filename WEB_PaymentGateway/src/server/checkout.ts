@@ -9,6 +9,7 @@ import { ensureCatalogSeeded } from "@/server/catalog";
 import { connectDB } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { CheckoutModel, type CheckoutRecord } from "@/server/models/Checkout";
+import { CustomerModel } from "@/server/models/Customer";
 import { PaymentModel, type PaymentRecord } from "@/server/models/Payment";
 import { ProductModel } from "@/server/models/Product";
 import { createInvoice, XenditApiError, XenditConfigError } from "@/server/xendit";
@@ -194,7 +195,15 @@ export async function startPayment(input: StartPaymentInput) {
   }
 
   const customer = { ...shipping, phone: normalizePhone(shipping.phone) };
-  checkout.set({ shipping: customer, paymentMethod: method });
+
+  // The email is the shopper's identity: one customer record per email, refreshed with the latest details.
+  const { email, ...details } = customer;
+  const customerDoc = await CustomerModel.findOneAndUpdate(
+    { email },
+    { $set: { ...details, lastOrderAt: new Date() } },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+  );
+  checkout.set({ shipping: customer, paymentMethod: method, customer: customerDoc._id });
 
   // A double-click or a return from Xendit should reuse the open invoice, not create a second one.
   let payment = await PaymentModel.findOne({
@@ -255,11 +264,25 @@ export async function startPayment(input: StartPaymentInput) {
   return { checkout, payment, redirectUrl: payment.invoiceUrl as string };
 }
 
-export async function listOrders(limit = 30): Promise<OrderListItem[]> {
+/** Order tracking: the order code alone is not enough, it has to match the email used at checkout. */
+export async function findCheckoutIdByEmailAndCode(rawEmail: unknown, rawCode: unknown): Promise<string | null> {
+  if (typeof rawEmail !== "string" || typeof rawCode !== "string") return null;
+  const email = rawEmail.trim().toLowerCase();
+  const code = rawCode.trim().toUpperCase();
+  if (!email || !/^GRS-\d{6}-[A-Z0-9]{5}$/.test(code)) return null;
+
   await connectDB();
-  const docs = await CheckoutModel.find({ status: { $ne: "OPEN" } })
+  const checkout = await CheckoutModel.findOne({ code, "shipping.email": email }).select("_id").lean<WithId<object>>();
+  return checkout ? checkout._id.toString() : null;
+}
+
+/** Summaries for the orders this browser has placed (ids come from the shopper's localStorage). */
+export async function listOrdersByIds(ids: string[]): Promise<OrderListItem[]> {
+  const validIds = ids.filter((id) => isValidObjectId(id)).slice(0, 20);
+  if (validIds.length === 0) return [];
+  await connectDB();
+  const docs = await CheckoutModel.find({ _id: { $in: validIds } })
     .sort({ createdAt: -1 })
-    .limit(limit)
     .lean<WithId<CheckoutRecord>[]>();
   return docs.map((d) => ({
     id: d._id.toString(),
