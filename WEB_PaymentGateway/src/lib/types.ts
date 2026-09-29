@@ -1,5 +1,5 @@
 import type { Category } from "@/lib/categories";
-import type { PaymentMethod } from "@/lib/payment-methods";
+import type { PaymentGateway, PaymentMethod } from "@/lib/payment-methods";
 import type { CheckoutStatus, PaymentStatus } from "@/lib/status";
 
 export interface Product {
@@ -48,6 +48,10 @@ export interface PaymentView {
   paidAt: string | null;
   invoiceUrl: string | null;
   paymentChannel: string | null;
+  gateway: PaymentGateway;
+  /** Amount charged by the gateway when it is not IDR, e.g. "31.79" USD for PayPal. */
+  gatewayAmount: string | null;
+  gatewayCurrency: string | null;
 }
 
 /** Checkout as sent to the browser: no email, phone or street address. */

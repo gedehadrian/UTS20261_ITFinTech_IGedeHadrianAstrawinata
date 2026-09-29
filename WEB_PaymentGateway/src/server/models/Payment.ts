@@ -13,10 +13,13 @@ const PaymentSchema = new Schema(
     status: { type: String, enum: PAYMENT_STATUSES, default: "PENDING", index: true },
     expiresAt: { type: Date, default: null },
     paidAt: { type: Date, default: null },
-    // Filled from the Xendit invoice once it is created
+    // Filled once the gateway session exists: Xendit invoice id/URL, or PayPal order id/approval URL
     invoiceId: { type: String, default: null, index: true },
     invoiceUrl: { type: String, default: null },
-    // Filled from the Xendit webhook once the shopper pays
+    // What the gateway actually charges when it is not IDR (PayPal charges USD)
+    gatewayCurrency: { type: String, default: null },
+    gatewayAmount: { type: String, default: null },
+    // Filled once the gateway confirms the payment
     paidAmount: { type: Number, default: null },
     paymentChannel: { type: String, default: null },
     gatewayMethod: { type: String, default: null },

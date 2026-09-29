@@ -8,14 +8,18 @@ import PageHeader from "@/components/PageHeader";
 import PaymentMethodPicker from "@/components/PaymentMethodPicker";
 import ShippingForm from "@/components/ShippingForm";
 import { useCart } from "@/lib/cart";
+import { idrToUsd } from "@/lib/currency";
 import { loadSavedShipping, rememberOrder, saveShipping, useHasSavedShipping } from "@/lib/device";
-import type { PaymentMethod } from "@/lib/payment-methods";
+import { formatIDR } from "@/lib/format";
+import { gatewayFor, type PaymentMethod } from "@/lib/payment-methods";
 import type { CheckoutView } from "@/lib/types";
 import { EMPTY_SHIPPING, validateShipping, type ShippingErrors } from "@/lib/validation";
 import { getCheckoutView } from "@/server/checkout";
+import { isPayPalConfigured, paypalIdrPerUsd } from "@/server/paypal";
 
 interface PaymentPageProps {
   checkout: CheckoutView;
+  paypal: { enabled: boolean; idrPerUsd: number };
 }
 
 export const getServerSideProps: GetServerSideProps<PaymentPageProps> = async ({ params }) => {
@@ -24,15 +28,18 @@ export const getServerSideProps: GetServerSideProps<PaymentPageProps> = async ({
   if (checkout.status === "PAID") {
     return { redirect: { destination: `/orders/${checkout.id}`, permanent: false } };
   }
-  return { props: { checkout } };
+  return { props: { checkout, paypal: { enabled: isPayPalConfigured(), idrPerUsd: paypalIdrPerUsd() } } };
 };
 
-export default function PaymentPage({ checkout }: PaymentPageProps) {
+export default function PaymentPage({ checkout, paypal }: PaymentPageProps) {
   const router = useRouter();
   const cart = useCart();
   const [shipping, setShipping] = useState(EMPTY_SHIPPING);
   const [errors, setErrors] = useState<ShippingErrors>({});
-  const [method, setMethod] = useState<PaymentMethod>(checkout.paymentMethod ?? "CARD");
+  const [method, setMethod] = useState<PaymentMethod>(
+    checkout.paymentMethod === "PAYPAL" && !paypal.enabled ? "CARD" : (checkout.paymentMethod ?? "CARD"),
+  );
+  const gateway = gatewayFor(method);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const hasSavedShipping = useHasSavedShipping();
@@ -131,7 +138,18 @@ export default function PaymentPage({ checkout }: PaymentPageProps) {
             </section>
             <section>
               <h2 className="mb-3 font-display text-xl">Payment Method</h2>
-              <PaymentMethodPicker value={method} onChange={setMethod} />
+              <PaymentMethodPicker
+                value={method}
+                onChange={setMethod}
+                unavailable={paypal.enabled ? {} : { PAYPAL: "Not available on this store yet" }}
+              />
+              {gateway === "PAYPAL" && (
+                <p className="mt-3 rounded-lg bg-paper px-4 py-3 text-xs leading-relaxed text-muted">
+                  PayPal can&apos;t charge in Rupiah, so this order is billed as{" "}
+                  <span className="font-semibold text-ink">USD {idrToUsd(checkout.total, paypal.idrPerUsd)}</span> (1 USD ={" "}
+                  {formatIDR(paypal.idrPerUsd)}). Your card issuer may apply its own exchange rate.
+                </p>
+              )}
             </section>
           </div>
 
@@ -146,9 +164,11 @@ export default function PaymentPage({ checkout }: PaymentPageProps) {
               disabled={submitting}
               className="mt-5 inline-flex h-12 w-full items-center justify-center rounded-xl bg-ink text-sm font-semibold text-white transition hover:bg-ink/85 disabled:cursor-wait disabled:opacity-60"
             >
-              {submitting ? "Opening Xendit…" : "Confirm & Pay"}
+              {submitting ? `Opening ${gateway === "PAYPAL" ? "PayPal" : "Xendit"}…` : "Confirm & Pay"}
             </button>
-            <p className="mt-3 text-center text-xs text-muted">You&apos;ll finish paying on Xendit&apos;s secure page.</p>
+            <p className="mt-3 text-center text-xs text-muted">
+              You&apos;ll finish paying on {gateway === "PAYPAL" ? "PayPal" : "Xendit"}&apos;s secure page.
+            </p>
             {formError && (
               <p role="alert" className="mt-3 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
                 {formError}

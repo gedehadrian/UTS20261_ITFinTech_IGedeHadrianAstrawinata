@@ -106,6 +106,13 @@ export const WalletIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const PayPalIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 20l1.2-7h3.3c3 0 4.9-1.6 5.3-4.3.3-2.3-1.2-4.2-4-4.2H8.6L6 20" />
+    <path d="M10.5 20l.8-4.5h2.2c2.4 0 3.9-1.3 4.2-3.4" />
+  </Icon>
+);
+
 export const BankIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M3 9l9-5 9 5M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18" />

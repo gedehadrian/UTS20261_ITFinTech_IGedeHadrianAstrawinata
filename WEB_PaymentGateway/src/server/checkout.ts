@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { isValidObjectId } from "mongoose";
-import { isPaymentMethod, xenditChannelsFor, type PaymentMethod } from "@/lib/payment-methods";
+import { idrToUsd } from "@/lib/currency";
+import { gatewayFor, isPaymentMethod, xenditChannelsFor, type PaymentGateway, type PaymentMethod } from "@/lib/payment-methods";
 import { calcTotals, TAX_RATE } from "@/lib/pricing";
 import type { CheckoutStatus, PaymentStatus } from "@/lib/status";
 import type { CheckoutView, OrderListItem, PaymentView } from "@/lib/types";
@@ -12,6 +13,7 @@ import { CheckoutModel, type CheckoutRecord } from "@/server/models/Checkout";
 import { CustomerModel } from "@/server/models/Customer";
 import { PaymentModel, type PaymentRecord } from "@/server/models/Payment";
 import { ProductModel } from "@/server/models/Product";
+import { createPayPalOrder, PayPalApiError, PayPalConfigError, paypalIdrPerUsd } from "@/server/paypal";
 import { createInvoice, XenditApiError, XenditConfigError } from "@/server/xendit";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -111,6 +113,9 @@ function toPaymentView(p: WithId<PaymentRecord>): PaymentView {
     paidAt: p.paidAt ? p.paidAt.toISOString() : null,
     invoiceUrl: p.invoiceUrl ?? null,
     paymentChannel: p.paymentChannel ?? null,
+    gateway: (p.gateway as PaymentGateway | undefined) ?? "XENDIT",
+    gatewayAmount: p.gatewayAmount ?? null,
+    gatewayCurrency: p.gatewayCurrency ?? null,
   };
 }
 
@@ -166,13 +171,14 @@ export interface StartPaymentInput {
   checkoutId: unknown;
   shipping: unknown;
   method: unknown;
-  /** Public origin used for Xendit's success/failure redirects. */
+  /** Public origin used for the gateway's return/cancel redirects. */
   baseUrl: string;
 }
 
 /**
- * Saves shipping + method on the checkout, records a PENDING payment and issues a Xendit invoice for it.
- * The shopper is then sent to the invoice page; the Xendit webhook marks the payment as paid.
+ * Saves shipping + method on the checkout, records a PENDING payment and opens it at the gateway:
+ * a Xendit invoice, or a PayPal order (charged in USD). The shopper is sent to that page; the gateway's
+ * webhook (and for PayPal, the return redirect) marks the payment as paid.
  */
 export async function startPayment(input: StartPaymentInput) {
   if (typeof input.checkoutId !== "string" || !isValidObjectId(input.checkoutId)) {
@@ -205,7 +211,7 @@ export async function startPayment(input: StartPaymentInput) {
   );
   checkout.set({ shipping: customer, paymentMethod: method, customer: customerDoc._id });
 
-  // A double-click or a return from Xendit should reuse the open invoice, not create a second one.
+  // A double-click or a return from the gateway should reuse the open bill, not create a second one.
   let payment = await PaymentModel.findOne({
     checkout: checkout._id,
     status: "PENDING",
@@ -216,34 +222,49 @@ export async function startPayment(input: StartPaymentInput) {
   }).sort({ createdAt: -1 });
 
   if (!payment) {
-    // Record the payment before calling Xendit so the webhook can always find it by external_id.
+    const gateway = gatewayFor(method);
+    // Record the payment before calling the gateway so its webhook can always find it by external id.
     payment = await PaymentModel.create({
       checkout: checkout._id,
       externalId: `${checkout.code}-${Date.now().toString(36).toUpperCase()}`,
+      gateway,
       method,
       amount: checkout.total,
       expiresAt: new Date(Date.now() + PAYMENT_WINDOW_MS),
+      ...(gateway === "PAYPAL" ? { gatewayCurrency: "USD", gatewayAmount: idrToUsd(checkout.total, paypalIdrPerUsd()) } : {}),
     });
 
     try {
       const orderUrl = `${input.baseUrl}/orders/${checkout.id}`;
-      const invoice = await createInvoice({
-        externalId: payment.externalId,
-        amount: checkout.total,
-        description: `Goresan order ${checkout.code}`,
-        customer,
-        items: checkout.items.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, category: "Artwork" })),
-        fees: [
-          { type: "PPN 11%", value: checkout.tax },
-          { type: "Shipping", value: checkout.shippingFee },
-        ].filter((fee) => fee.value > 0),
-        paymentMethods: xenditChannelsFor(method),
-        successRedirectUrl: `${orderUrl}?paid=1`,
-        failureRedirectUrl: orderUrl,
-        durationSeconds: PAYMENT_WINDOW_MS / 1000,
-        metadata: { checkoutId: checkout.id, orderCode: checkout.code },
-      });
-      payment.set({ invoiceId: invoice.id, invoiceUrl: invoice.invoice_url, expiresAt: new Date(invoice.expiry_date) });
+      if (gateway === "PAYPAL") {
+        const order = await createPayPalOrder({
+          referenceId: checkout.code,
+          customId: payment.externalId,
+          description: `Goresan order ${checkout.code}`,
+          amountUsd: payment.gatewayAmount as string,
+          returnUrl: `${input.baseUrl}/api/paypal/return?checkoutId=${checkout.id}`,
+          cancelUrl: orderUrl,
+        });
+        payment.set({ invoiceId: order.id, invoiceUrl: order.approveUrl });
+      } else {
+        const invoice = await createInvoice({
+          externalId: payment.externalId,
+          amount: checkout.total,
+          description: `Goresan order ${checkout.code}`,
+          customer,
+          items: checkout.items.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, category: "Artwork" })),
+          fees: [
+            { type: "PPN 11%", value: checkout.tax },
+            { type: "Shipping", value: checkout.shippingFee },
+          ].filter((fee) => fee.value > 0),
+          paymentMethods: xenditChannelsFor(method),
+          successRedirectUrl: `${orderUrl}?paid=1`,
+          failureRedirectUrl: orderUrl,
+          durationSeconds: PAYMENT_WINDOW_MS / 1000,
+          metadata: { checkoutId: checkout.id, orderCode: checkout.code },
+        });
+        payment.set({ invoiceId: invoice.id, invoiceUrl: invoice.invoice_url, expiresAt: new Date(invoice.expiry_date) });
+      }
       await payment.save();
     } catch (err) {
       payment.set({ status: "FAILED", failureReason: err instanceof Error ? err.message : String(err) });
@@ -253,6 +274,12 @@ export async function startPayment(input: StartPaymentInput) {
       }
       if (err instanceof XenditApiError) {
         throw new AppError(`Xendit couldn't create the invoice: ${err.message}`, 502);
+      }
+      if (err instanceof PayPalConfigError) {
+        throw new AppError("PayPal isn't available on this store yet. Please choose another payment method.", 503);
+      }
+      if (err instanceof PayPalApiError) {
+        throw new AppError(`PayPal couldn't create the order: ${err.message}`, 502);
       }
       throw err;
     }

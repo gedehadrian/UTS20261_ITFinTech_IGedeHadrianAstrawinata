@@ -59,9 +59,11 @@ function OrderView({ initial }: { initial: CheckoutView }) {
   const payment = checkout.payment;
   const methodLabel = PAYMENT_METHODS.find((m) => m.value === checkout.paymentMethod)?.label;
   const pending = checkout.status === "PENDING_PAYMENT";
-  const returnedFromXendit = query.paid === "1";
+  const returnedFromGateway = query.paid === "1";
+  const payPalFailed = query.paypal === "error";
+  const gatewayName = payment?.gateway === "PAYPAL" ? "PayPal" : "Xendit";
 
-  // Opening a bill (e.g. straight back from Xendit) adds it to "My orders" on this device.
+  // Opening a bill (e.g. straight back from the gateway) adds it to "My orders" on this device.
   useEffect(() => {
     rememberOrder({ id: checkout.id, code: checkout.code, createdAt: checkout.createdAt });
   }, [checkout.id, checkout.code, checkout.createdAt]);
@@ -83,6 +85,17 @@ function OrderView({ initial }: { initial: CheckoutView }) {
         </div>
         <h1 className="mt-4 font-display text-2xl sm:text-3xl">{HEADLINES[checkout.status]}</h1>
         <p className="mt-2 text-3xl font-semibold tabular-nums">{formatIDR(checkout.total)}</p>
+        {payment?.gatewayAmount && (
+          <p className="mt-1 text-sm text-muted">
+            Charged by {gatewayName} as {payment.gatewayCurrency} {payment.gatewayAmount}
+          </p>
+        )}
+
+        {pending && payPalFailed && (
+          <p role="alert" className="mx-auto mt-4 max-w-md rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
+            PayPal couldn&apos;t complete the payment. Try again, or choose another payment method.
+          </p>
+        )}
 
         {pending && payment?.invoiceUrl && (
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
@@ -90,7 +103,7 @@ function OrderView({ initial }: { initial: CheckoutView }) {
               href={payment.invoiceUrl}
               className="inline-flex h-12 items-center gap-2 rounded-xl bg-ink px-6 text-sm font-semibold text-white transition hover:bg-ink/85"
             >
-              {returnedFromXendit ? "Open the invoice again" : "Pay now with Xendit"} <ArrowRightIcon width={18} height={18} />
+              {returnedFromGateway ? `Open ${gatewayName} again` : `Pay now with ${gatewayName}`} <ArrowRightIcon width={18} height={18} />
             </a>
             <Link
               href={`/payment/${checkout.id}`}
@@ -106,9 +119,9 @@ function OrderView({ initial }: { initial: CheckoutView }) {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-warning" />
             </span>
-            {returnedFromXendit
-              ? "Confirming your payment with Xendit… this page updates by itself."
-              : "Waiting for payment. This page updates by itself once Xendit confirms it."}
+            {returnedFromGateway
+              ? `Confirming your payment with ${gatewayName}… this page updates by itself.`
+              : `Waiting for payment. This page updates by itself once ${gatewayName} confirms it.`}
           </p>
         )}
         {(checkout.status === "EXPIRED" || checkout.status === "FAILED") && (
@@ -126,7 +139,9 @@ function OrderView({ initial }: { initial: CheckoutView }) {
               <dt className="text-muted">Method</dt>
               <dd>
                 {methodLabel}
-                {payment?.paymentChannel && <span className="text-muted"> · {payment.paymentChannel}</span>}
+                {payment?.paymentChannel && payment.paymentChannel.toLowerCase() !== methodLabel.toLowerCase() && (
+                  <span className="text-muted"> · {payment.paymentChannel}</span>
+                )}
               </dd>
             </>
           )}
