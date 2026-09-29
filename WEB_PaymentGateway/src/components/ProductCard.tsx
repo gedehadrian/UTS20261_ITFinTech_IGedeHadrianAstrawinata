@@ -17,7 +17,7 @@ export default function ProductCard({ product, quantity, onAdd, onQuantityChange
 
   return (
     <article className="group flex gap-4 border-b border-line py-4 last:border-b-0 sm:flex-col sm:gap-3 sm:rounded-2xl sm:border sm:bg-white sm:p-3 sm:last:border-b">
-      <div className="relative aspect-square w-28 shrink-0 overflow-hidden rounded-xl bg-line sm:w-full">
+      <div className="relative aspect-square w-28 shrink-0 self-start overflow-hidden rounded-xl bg-line sm:w-full sm:self-auto">
         <Image
           src={product.image}
           alt={product.name}
