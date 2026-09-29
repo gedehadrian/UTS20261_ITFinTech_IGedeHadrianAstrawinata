@@ -1,16 +1,11 @@
 // Links orders placed before customer tracking existed to a customer record (one per email).
 // Safe to run more than once. Usage: npm run backfill-customers   (reads MONGODB_URI from .env.local)
 import mongoose from "mongoose";
+import { connectMongo } from "./connect.mjs";
 
-const uri = process.env.MONGODB_URI;
-if (!uri) {
-  console.error("MONGODB_URI is not set. Add it to .env.local first.");
-  process.exit(1);
-}
-
-await mongoose.connect(uri, { dbName: process.env.MONGODB_DB || "web_payment_gateway" });
-const checkouts = mongoose.connection.collection("checkouts");
-const customers = mongoose.connection.collection("customers");
+const db = await connectMongo();
+const checkouts = db.collection("checkouts");
+const customers = db.collection("customers");
 
 // Orders that have shipping details but no customer yet, oldest first.
 const orphans = await checkouts
