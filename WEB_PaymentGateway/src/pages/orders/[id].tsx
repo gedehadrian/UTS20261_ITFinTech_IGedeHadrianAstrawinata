@@ -79,12 +79,20 @@ function OrderView({ initial }: { initial: CheckoutView }) {
         <p className="mt-2 text-3xl font-semibold tabular-nums">{formatIDR(checkout.total)}</p>
 
         {pending && payment?.invoiceUrl && (
-          <a
-            href={payment.invoiceUrl}
-            className="mt-5 inline-flex h-12 items-center gap-2 rounded-xl bg-ink px-6 text-sm font-semibold text-white transition hover:bg-ink/85"
-          >
-            {returnedFromXendit ? "Open the invoice again" : "Pay now with Xendit"} <ArrowRightIcon width={18} height={18} />
-          </a>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href={payment.invoiceUrl}
+              className="inline-flex h-12 items-center gap-2 rounded-xl bg-ink px-6 text-sm font-semibold text-white transition hover:bg-ink/85"
+            >
+              {returnedFromXendit ? "Open the invoice again" : "Pay now with Xendit"} <ArrowRightIcon width={18} height={18} />
+            </a>
+            <Link
+              href={`/payment/${checkout.id}`}
+              className="inline-flex h-12 items-center rounded-xl border border-line px-5 text-sm hover:border-ink/30"
+            >
+              Change payment method
+            </Link>
+          </div>
         )}
         {pending && (
           <p className="mt-4 flex items-center justify-center gap-2 text-xs text-muted" aria-live="polite">
