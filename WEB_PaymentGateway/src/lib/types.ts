@@ -71,6 +71,17 @@ export interface CheckoutView {
   paidAt: string | null;
 }
 
+/** One kelurahan from the postal-code directory, as offered by the address search. */
+export interface AreaSuggestion {
+  village: string;
+  district: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  /** Ready-to-store description, e.g. "Kel. Senayan, Kec. Kebayoran Baru, DKI Jakarta". */
+  area: string;
+}
+
 export interface OrderListItem {
   id: string;
   code: string;

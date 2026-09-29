@@ -70,7 +70,7 @@ export interface CreateInvoiceInput {
   externalId: string;
   amount: number;
   description: string;
-  customer: { fullName: string; email: string; phone: string; address: string; city: string; postalCode: string };
+  customer: { fullName: string; email: string; phone: string; address: string; area?: string; city: string; postalCode: string };
   items: { name: string; quantity: number; price: number; category: string }[];
   fees: { type: string; value: number }[];
   paymentMethods?: readonly string[];
@@ -99,6 +99,7 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<XenditIn
       addresses: [
         {
           street_line1: input.customer.address,
+          street_line2: input.customer.area || undefined,
           city: input.customer.city,
           postal_code: input.customer.postalCode,
           country: "Indonesia",

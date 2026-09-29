@@ -162,6 +162,7 @@ function readShipping(raw: unknown): ShippingDetails {
     email: text("email").toLowerCase(),
     phone: text("phone"),
     address: text("address"),
+    area: text("area"),
     city: text("city"),
     postalCode: text("postalCode"),
   };

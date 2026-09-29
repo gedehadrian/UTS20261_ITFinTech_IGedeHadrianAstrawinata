@@ -43,13 +43,20 @@ Toko memakai *guest checkout*: tidak ada password, dan **email adalah identitas 
 - Saat pembayaran dimulai, data pembeli disimpan atau diperbarui di collection `customers` (satu dokumen per email), lalu checkout ditautkan ke customer tersebut.
 - Pesanan bisa dilacak dari perangkat mana pun dengan **email + kode order** (misalnya `GRS-260930-K7QM2`). Kode tanpa email yang cocok tidak akan menampilkan apa pun.
 - Browser pembeli mengingat pesanan yang pernah dibuat (halaman My orders) dan alamat terakhir (tombol "Use my saved details"). Data ini hanya disimpan di `localStorage` perangkat itu.
+- Pesanan yang dibuat sebelum fitur ini ada bisa ditautkan ke customer dengan `npm run backfill-customers`. Script ini aman dijalankan berulang kali dan tidak menimpa data customer yang lebih baru.
+
+## Autofill alamat
+
+Di halaman Payment ada kolom **Find your area**. Pembeli mengetik kelurahan, kecamatan, atau kode pos, lalu memilih salah satu saran. Kolom **City**, **Postal code**, dan keterangan wilayah (kelurahan, kecamatan, provinsi) terisi otomatis. Nama jalan tetap diisi manual.
+
+Saran diambil dari direktori kode pos Indonesia [kodepos.vercel.app](https://kodepos.vercel.app) (tanpa API key) melalui proxy `/api/address/search`, dengan cache CDN 1 hari. Kalau layanan itu sedang tidak bisa diakses, form tetap bisa diisi manual.
 
 ## Database (MongoDB)
 
 | Collection | Isi |
 |---|---|
 | `products` | Katalog: nama, kategori, seniman, medium, ukuran, harga, stok, gambar |
-| `customers` | Pembeli per email: nama, telepon, alamat terakhir, waktu order terakhir |
+| `customers` | Pembeli per email: nama, telepon, alamat dan wilayah terakhir, waktu order terakhir |
 | `checkouts` | Snapshot item dan harga, subtotal, pajak, ongkir, total, pembeli, alamat, metode, status (`OPEN` → `PENDING_PAYMENT` → `PAID` / `EXPIRED`) |
 | `payments` | Tagihan per checkout: `externalId`, id dan URL invoice Xendit, jumlah, status (`PENDING` / `PAID` / `EXPIRED` / `FAILED`), channel pembayaran, waktu bayar |
 | `webhooklogs` | Setiap webhook Xendit dan PayPal yang lolos verifikasi, beserta hasil pemrosesannya |
@@ -71,6 +78,7 @@ Collection `products` terisi otomatis dari `src/data/products.json` saat databas
 | POST | `/api/webhooks/paypal` | Webhook PayPal `PAYMENT.CAPTURE.COMPLETED` (dengan verifikasi tanda tangan) |
 | GET | `/api/orders?ids=` | Ringkasan status pesanan milik browser ini |
 | POST | `/api/orders/lookup` | Cari pesanan dengan `{ email, code }` |
+| GET | `/api/address/search?q=` | Saran wilayah (kelurahan, kecamatan, kota, provinsi, kode pos) untuk autofill alamat |
 
 ## Environment variables
 
